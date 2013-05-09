@@ -21,6 +21,7 @@ import org.exoplatform.social.core.feature.ActiviyBuilderWhereTest;
 import org.exoplatform.social.core.identity.IdentityResultTest;
 import org.exoplatform.social.core.identity.model.GlobalIdTest;
 import org.exoplatform.social.core.identity.model.IdentityTest;
+import org.exoplatform.social.core.identity.model.ProfileTest;
 import org.exoplatform.social.core.image.ImageUtilsTest;
 import org.exoplatform.social.core.processor.ActivityResourceBundlePluginTest;
 import org.exoplatform.social.core.processor.I18NActivityProcessorTest;
@@ -39,6 +40,7 @@ import org.junit.runners.Suite.SuiteClasses;
 @SuiteClasses({
   GlobalIdTest.class,
   IdentityTest.class,
+  ProfileTest.class,
   ImageUtilsTest.class,
   ActivityResourceBundlePluginTest.class,
   I18NActivityProcessorTest.class,

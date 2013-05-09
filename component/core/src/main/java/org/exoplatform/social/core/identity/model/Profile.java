@@ -16,6 +16,8 @@
  */
 package org.exoplatform.social.core.identity.model;
 
+import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.Iterator;
 import java.util.List;
@@ -108,6 +110,36 @@ public class Profile {
 
   /** Resized subfix */
   public static final String        RESIZED_SUBFIX = "RESIZED_";
+  
+  /** Key of Phone/URL/Image maps to reference to name of param. */
+  public static final String KEY = "key";
+
+  /** Key of of Phone/URL/Image maps to reference to value of param. */
+  public static final String VALUE = "value";
+  
+  /** Define all of the phone types */
+  static enum PHONE_TYPE {
+    HOME("Home"), WORK("Work"), OTHER("Other");
+    private String name;
+    private PHONE_TYPE(String name){
+      this.name = name;
+    }
+    public String getName() {
+      return name;
+    }
+  }
+  
+  /** Define all of the instance message types */
+  static enum IM_TYPE {
+    GTALK("Gtalk"), MSN("Msn"), SKYPE("Skype"), YAHOO("Yahoo"), OTHER("Other");
+    private String name;
+    private IM_TYPE(String name){
+      this.name = name;
+    }
+    public String getName() {
+      return name;
+    }
+  }
 
   /** Types of updating of profile. */
   public static enum                UpdateType 
@@ -191,6 +223,15 @@ public class Profile {
 
   /** The identity. */
   private final Identity            identity;
+  
+  /** The contact phone object*/
+  private ContactPhone PHONE;
+  
+  /** The contact URLs object*/
+  private ContactURLs URLs;
+  
+  /** The contact image object*/
+  private ContactInstanceMessage IM;
 
   /** The id. */
   private String                    id;
@@ -222,8 +263,256 @@ public class Profile {
    */
   public Profile(final Identity identity) {
     this.identity = identity;
+    PHONE = new ContactPhone(this);
+    URLs = new ContactURLs(this);
+    IM = new ContactInstanceMessage(this);
+  }
+  
+  /**
+   * Populate the contact phones of profile 
+   */
+  class ContactPhone {
+    
+    private Profile profile;
+    
+    private List<String> phoneList;
+    
+    public ContactPhone(Profile profile) {
+      this.profile = profile; 
+    }
+  
+    /** 
+     * Add one Phone number with its phone type.
+     * @param phoneType Type of phone (home, work or other)
+     * @param phoneNumber Phone number
+     * @throws Exception
+     */
+    @SuppressWarnings("unchecked")
+    public void addPhone(String phoneType, String phoneNumber) throws Exception {
+      if(phoneType != null && phoneNumber != null) {
+        List<Map<String, String>> mapPhones = (List<Map<String, String>>) profile.getProperty(CONTACT_PHONES);
+        boolean isExist = false;
+        if(mapPhones == null){
+          mapPhones = new ArrayList<Map<String,String>>();
+        } else {
+          for(Map<String, String> phoneMap : mapPhones){
+            if(phoneType.equals(phoneMap.get(KEY))) {
+              if(phoneNumber.equals(phoneMap.get(VALUE))) isExist = true;
+            }
+          }
+        }
+        if(!isExist) {
+          Map<String, String> map = new HashMap<String, String>();
+          map.put(KEY, phoneType);
+          map.put(VALUE, phoneNumber);
+          mapPhones.add(map);
+          //set to profile
+          profile.setProperty(CONTACT_PHONES, mapPhones);
+        }
+      }
+    }
+    
+    /**
+     * Get Phone by the phone type.
+     * @param phoneType Type of phone to get
+     * @return list of phones
+     * @throws Exception
+     */
+    private List<String> getPhones(String phoneType) throws Exception {
+      //
+      List<String> phones = new ArrayList<String>();
+      if(profile.contains(CONTACT_PHONES)){
+        phones = profile.getData(phoneType, CONTACT_PHONES);
+      }
+      return phones;
+    }
+    
+    /** Get the home phones. */
+    private List<String> getHomePhones() throws Exception {
+      phoneList = getPhones(PHONE_TYPE.HOME.getName());
+      return phoneList;
+    }
+    
+    /** Get the work phones. */
+    private List<String> getWorkPhones() throws Exception {
+      phoneList = getPhones(PHONE_TYPE.WORK.getName());
+      return phoneList;
+    }
+
+    /** Get the other phones. */
+    private List<String> getOtherPhones() throws Exception {
+      phoneList = getPhones(PHONE_TYPE.OTHER.getName());
+      return phoneList;
+    }
+    
+    /** 
+     * Get the phone at specific index. 
+     * @return phone
+     */
+    public String at(int index) throws Exception {
+      return this.phoneList.get(index);
+    }
+
+    /** 
+     * Get all of the phone list
+     * @return list of phone
+     */
+    public List<String> all() throws Exception {
+      return this.phoneList;
+    }
+    
   }
 
+  /**
+   * Populate the contact URLs of profile 
+   */
+  class ContactURLs {
+    
+    private Profile profile;
+    
+    public ContactURLs(Profile profile) {
+      this.profile = profile;
+    }
+    
+    /** 
+     * Add the contact URL to Profile.
+     * @param url
+     * @throws Exception
+     */
+    @SuppressWarnings("unchecked")
+    public void addURL(String url) throws Exception {
+      if(url != null) {
+        List<Map<String, String>> mapUrls = (List<Map<String, String>>) profile.getProperty(CONTACT_URLS);
+        boolean isExist = false;
+        if(mapUrls == null){
+          mapUrls = new ArrayList<Map<String,String>>();
+        } else {
+          for(Map<String, String> urlMap : mapUrls){
+            if(url.equals(urlMap.get(VALUE))) isExist = true;
+          }
+        }
+        if(!isExist){
+          Map<String, String> map = new HashMap<String, String>();
+          map.put(KEY, URL_POSTFIX.toLowerCase());
+          map.put(VALUE, url);
+          mapUrls.add(map);
+          
+          //set to profile
+          profile.setProperty(CONTACT_URLS, mapUrls);
+        }
+      }
+    }
+    
+    /** Get the list of contact's URL from Profile. */
+    public List<String> getURLs() throws Exception {
+      //
+      List<String> urls = new ArrayList<String>();
+      if(profile.contains(CONTACT_URLS)) {
+        urls = profile.getData(CONTACT_URLS);
+      }
+      return urls;
+    }
+    
+  }
+
+  /**
+   * Populate the contact images of profile 
+   */
+  class ContactInstanceMessage {
+    
+    private Profile profile;
+    
+    public ContactInstanceMessage(Profile profile) {
+      this.profile = profile;
+    }
+    
+    /**
+     * Add one contact's IM to profile.
+     * @param imgType
+     * @param account
+     * @throws Exception
+     */
+    @SuppressWarnings("unchecked")
+    public void addIM(String imgType, String account) throws Exception{
+      if(imgType != null && account != null){
+        List<Map<String, String>> mapIms = (List<Map<String, String>>) profile.getProperty(CONTACT_IMS);
+        boolean isExist = false;
+        if(mapIms == null){
+          mapIms = new ArrayList<Map<String,String>>();
+        } else {
+          for(Map<String, String> imMap : mapIms){
+            if(imgType.equals(imMap.get(KEY))){
+              if(account.equals(imMap.get(VALUE))) isExist = true;
+            }
+          }
+        }
+        if(!isExist){
+          Map<String, String> map = new HashMap<String, String>();
+          map.put(KEY, imgType);
+          map.put(VALUE, account);
+          mapIms.add(map);
+          
+          //set to profile
+          profile.setProperty(CONTACT_IMS, mapIms);
+        }
+      }
+    }
+    
+    /** Get IMs from profile. */
+    public List<String> getIMs(String imType) throws Exception {
+      //
+      List<String> images = new ArrayList<String>();
+      if(profile.contains(CONTACT_IMS)){
+        images = profile.getData(imType, CONTACT_IMS);
+      }
+      return images;
+    }
+    
+  }
+  
+  /**
+   * Get data from list of hash map with type of parameter
+   * @param paramType Type of parameter
+   * @param property The property name 
+   * @throws Exception
+   */
+  @SuppressWarnings("unchecked")
+  private List<String> getData(String paramType, String property) throws Exception {
+    if (paramType == null) return getData(property);
+     //
+     List<Map<String, String>> listOfMap = (List<Map<String, String>>) getProperty(property);
+     if (listOfMap == null) return Collections.emptyList();
+     //
+     List<String> result = new ArrayList<String>(); 
+     for(Map<String, String> mapInfo : listOfMap) {
+       if (mapInfo == null) continue;
+       if(paramType.equals(mapInfo.get(KEY))){
+         result.add(mapInfo.get(VALUE));
+       }
+     }
+     return result;
+   }
+  
+  /**
+   * Get data from list of hash map without type of parameter
+   * @param property The property name
+   * @throws Exception
+   */
+  @SuppressWarnings("unchecked")
+  private List<String> getData(String property) throws Exception {
+    if (property == null) return Collections.emptyList();
+     //
+     List<Map<String, String>> listOfMap = (List<Map<String, String>>) getProperty(property);
+     if (listOfMap == null) return Collections.emptyList();
+     //
+     List<String> result = new ArrayList<String>();
+     for(Map<String, String> mapInfo : listOfMap) {
+       if (mapInfo == null) continue;
+       result.add(mapInfo.get(VALUE));
+     }
+     return result;
+   }
+  
   /**
    * Gets the identity.
    *
@@ -529,9 +818,10 @@ public class Profile {
   /**
    * Gets Phones
    * 
-   * @return list of user's number phone
+   * @return list of user's phone numbers
    * @since 4.0.0.Alpha1
    */
+  @SuppressWarnings("unchecked")
   public final List<Map<String, String>> getPhones() {
     return (List<Map<String, String>>) getProperty(Profile.CONTACT_PHONES);
   }
@@ -546,6 +836,91 @@ public class Profile {
     } else {
       this.createdTime = System.currentTimeMillis();
     }
+  }
+  
+  /**
+   * Set the phoneList by work phones.
+   * @throws Exception
+   */
+  public Profile workPhones() throws Exception {
+    this.PHONE.getWorkPhones();
+    return this;
+  }
+  
+  /**
+   * Set the phoneList by home phones.
+   * @throws Exception
+   */
+  public Profile homePhones() throws Exception {
+    this.PHONE.getHomePhones();
+    return this;
+  }
+  
+  /** Set the phoneList by other phones. */
+  public Profile otherPhones() throws Exception {
+    this.PHONE.getOtherPhones();
+    return this;
+  }
+  
+  /** 
+   * Get the phone at specific index. 
+   * This method just only use after the workPhones()/homePhones()/otherPhones() function 
+   * @return phone
+   */
+  public String at(int index) throws Exception {
+    return this.PHONE.at(index);
+  }
+
+  /** 
+   * Get all of the phone list.
+   * This method just only use after homePhones()/workPhones()/otherPhones() function.
+   * @return list of phone
+   */
+  public List<String> all() throws Exception {
+    return this.PHONE.all();
+  }
+
+  /**
+   * Add IM to profile
+   * @param imType Instance Message type
+   * @param account Account of IM
+   * @throws Exception
+   */
+  public void addIM(String imType, String account) throws Exception {
+    this.IM.addIM(imType, account);
+  }
+
+  /**
+   * Get IM by IM type
+   * @param imType
+   * @throws Exception
+   */
+  public List<String> getIMs(String imType) throws Exception {
+    return this.IM.getIMs(imType);
+  }
+  
+  /**
+   * Add phone to profile
+   * @param phoneType The phone type (Home, Work or Other)
+   * @param phoneNumber Phone number
+   * @throws Exception
+   */
+  public void addPhone(String phoneType, String phoneNumber) throws Exception {
+    this.PHONE.addPhone(phoneType, phoneNumber);
+  }
+  
+  /**
+   * Add URL to profile
+   * @param url
+   * @throws Exception
+   */
+  public void addURL(String url) throws Exception {
+    this.URLs.addURL(url);
+  }
+  
+  /** Get URLs from ContactURLs. */
+  public List<String> getURLs() throws Exception {
+    return this.URLs.getURLs();
   }
 
   /*

@@ -346,49 +346,56 @@ public class UIContactSection extends UIProfileSection {
     Profile toBeUpdatedProfile = getProfile();
 
     toBeUpdatedProfile.setProperty(Profile.GENDER, getGenderChild().getValue());
-    toBeUpdatedProfile.setProperty(Profile.CONTACT_PHONES, getProfileForSave(phoneCount, getPhoneChilds(), PHONE));
-    toBeUpdatedProfile.setProperty(Profile.CONTACT_IMS, getProfileForSave(imCount, getImsChilds(), IM));
-    toBeUpdatedProfile.setProperty(Profile.CONTACT_URLS, getProfileForSave(urlCount, getUrlChilds(), URL));
+    toBeUpdatedProfile = setProfileInfos(toBeUpdatedProfile, phoneCount, getPhoneChilds(), PHONE);
+    toBeUpdatedProfile = setProfileInfos(toBeUpdatedProfile, imCount, getImsChilds(), IM);
+    toBeUpdatedProfile = setProfileInfos(toBeUpdatedProfile, urlCount, getUrlChilds(), URL);
 
     Utils.getIdentityManager().updateProfile(toBeUpdatedProfile);
   }
-
+  
   /**
-   * Gets information input by user for saving profile.<br>
-   *
+   * Set Profile's informations such as Phone,IM,URL.<br>
+   * 
+   * @param profile The Profile object need to set information
+   * 
    * @param count Number of children.
    *
    * @param listUIComp Contains children of each input type (phone,...).
    *
    * @param uiStringType Type of component.
-   *
-   * @return All profile information.
    */
-  private ArrayList<HashMap<String, String>> getProfileForSave(final int count,
-                                                               final List<UIComponent> listUIComp,
-                                                               final String uiStringType) {
-    ArrayList<HashMap<String, String>> profileMap = new ArrayList<HashMap<String, String>>();
+  private Profile setProfileInfos(Profile profile, final int count, final List<UIComponent> listUIComp, final String uiStringType) throws Exception {
     for (int i = 0; i < count; i+=2) {
-      HashMap<String, String> uiMap = new HashMap<String, String>();
       String value = null;
       String key = null;
       if (uiStringType.equals(URL)) {
         UIFormStringInput uiStringInput = (UIFormStringInput) listUIComp.get(i+1);
-        key = Profile.URL_POSTFIX.toLowerCase();
         value = uiStringInput.getValue();
         if (!value.matches("^(https?|ftp)://.*$")) {
           value = HTTP_PROTOCOL + value;
         }
+        //clear before set
+        if(i == 0) profile.setProperty(Profile.CONTACT_URLS, null);
+        
+        profile.addURL(value);
       } else {
         key = ((UIFormSelectBox) listUIComp.get(i)).getValue();
         value = ((UIFormStringInput) listUIComp.get(i+1)).getValue();
       }
-
-      uiMap.put(KEY,key);
-      uiMap.put(VALUE, escapeHtml(value));
-      profileMap.add(uiMap);
+      if (uiStringType.equals(PHONE)) {
+        //clear before set
+        if(i == 0) profile.setProperty(Profile.CONTACT_PHONES, null);
+        //
+        profile.addPhone(key, value);
+      }
+      else if (uiStringType.equals(IM)){
+        //clear before set
+        if(i == 0) profile.setProperty(Profile.CONTACT_IMS, null);
+        //
+        profile.addIM(key, value);
+      }
     }
-    return profileMap;
+    return profile;
   }
 
   /**
