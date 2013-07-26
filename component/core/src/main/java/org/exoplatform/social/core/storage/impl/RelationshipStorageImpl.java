@@ -1030,6 +1030,29 @@ public class RelationshipStorageImpl extends AbstractStorage implements Relation
     return identityIdsLocal.get();
   }
   
+  private String[] getLastUsers(int offset, int limit) {
+    String[] lastUsers = new String[0];
+    
+    try {
+        
+      StringBuffer sb = new StringBuffer().append("SELECT * FROM soc:identitydefinition WHERE ");
+      sb.append(JCRProperties.path.getName()).append(" LIKE '").append(getProviderRoot().getProviders().get(OrganizationIdentityProvider.NAME).getPath() + StorageUtils.SLASH_STR + StorageUtils.PERCENT_STR).append("'");
+      sb.append(" ORDER BY exo:dateCreated DESC");
+
+      NodeIterator nodeIter = nodes(sb.toString(), offset, limit); 
+      while(nodeIter.hasNext()) {
+        Node node = (Node)nodeIter.next();
+        lastUsers = (String[]) ArrayUtils.add(lastUsers, node.getUUID());
+      }
+      
+    } catch (Exception e) {
+      throw new RelationshipStorageException(RelationshipStorageException.Type.FAILED_TO_GET_RELATIONSHIP,
+                                             e.getMessage());
+    }
+    
+    return lastUsers;
+  }
+  
   private String[] getSuggestion(List<String> relationshipIds) {
     String[] suggestions = new String[0];
     
@@ -1072,12 +1095,13 @@ public class RelationshipStorageImpl extends AbstractStorage implements Relation
     
     return suggestions;
   }
+  
   /**
    * Gets Suggestion list with relationship for each identity.
    * @param suggestions
    * @return
    */
-  private Map<String, String[]> getSuggestionRelationships(final String[] suggestions) {
+  private Map<String, String[]> getSuggestionRelationships(final String[] suggestions, final List<String> excludes) {
     for (final String id : suggestions) {
       //
       Callable<String[]> task = new  Callable<String[]>() {
@@ -1088,27 +1112,61 @@ public class RelationshipStorageImpl extends AbstractStorage implements Relation
       };
       executorService.submit(task, id);
     }
-    
+
     //Wait multiple threads finish work and push relationships to map
     Map<String, String[]> suggestRelationships = new HashMap<String, String[]>();
-    copyFutureToMap(suggestRelationships, executorService.getFutureCollections());
-    
+    copyFutureToMap(suggestRelationships, executorService.getFutureCollections(), excludes);
+
     return suggestRelationships;
   }
+  
   /**
    * Gets result from future task
    * @param map
    * @param futures
    */
-  private void copyFutureToMap(Map<String, String[]> map, Map<String, Future<String[]>> futures) {
+  private void copyFutureToMap(Map<String, String[]> map, Map<String, Future<String[]>> futures, final List<String> excludes) {
     try {
       for (Entry<String, Future<String[]>> future : futures.entrySet()) {
-        map.put(future.getKey(), future.getValue().get());
+        //
+        if (excludes != null && excludes.size() > 0) {
+          List<String> relationships = new ArrayList<String>(Arrays.asList(future.getValue().get())); //avoid the concurrent exception 
+          relationships.removeAll(excludes);
+          map.put(future.getKey(), relationships.toArray(new String[0]));
+        } else {
+          map.put(future.getKey(), future.getValue().get());
+        }
       }
     } catch (Exception e) {
       LOG.warn("Failed to get result from Future." + e);
     }
   }
+  
+  /**
+   * Find the number of mutual relationships
+   * 
+   * @param relationshipMap
+   * @return
+   */
+  private Map<String, Integer> calculateNumberOfMutualRelationship(Map<String, String[]> relationshipMap) {
+    //Calculate the common users of current Identity with each suggestion.
+    Map<String, Integer> suggestionIdMap = new HashMap<String, Integer>();
+    for (Entry<String, String[]> friendOfIdentity : relationshipMap.entrySet()) {
+      //
+      List<String> relationships = Arrays.asList(friendOfIdentity.getValue());
+      
+      for (String id : relationships) {
+        if (suggestionIdMap.containsKey(id)) {
+          suggestionIdMap.put(id, suggestionIdMap.get(id).intValue() + 1);
+        } else {
+          suggestionIdMap.put(id, 1);
+        }
+      }
+    }
+    
+    return suggestionIdMap;
+  }
+  
   /**
    * Calculate and statistic suggestion.
    * 
@@ -1122,7 +1180,10 @@ public class RelationshipStorageImpl extends AbstractStorage implements Relation
     for (Entry<String, String[]> friendOfIdentity : suggestRelationships.entrySet()) {
       //
       String identityId = friendOfIdentity.getKey();
-      suggestionIdMap.put(identityId, StorageUtils.getCommonItemNumber(relationshipIds, Arrays.asList(friendOfIdentity.getValue())));
+      int commonItem = StorageUtils.getCommonItemNumber(relationshipIds, Arrays.asList(friendOfIdentity.getValue()));
+      if (commonItem > 0) {
+        suggestionIdMap.put(identityId, commonItem);
+      }
     }
     
     return suggestionIdMap;
@@ -1134,21 +1195,121 @@ public class RelationshipStorageImpl extends AbstractStorage implements Relation
   public Map<Identity, Integer> getSuggestions(Identity identity, int offset, int limit) throws RelationshipStorageException {
     //get identities who have relationship
     List<String> relationshipIds = new ArrayList<String>(); 
-    relationshipIds.add(identity.getId());
     relationshipIds.addAll(Arrays.asList(getRelationships(identity.getId())));
     
-    //store all identities who is not relationship with provided identity
-    String[] suggestions = getSuggestion(relationshipIds);
-
-    //Find relationships of the identities are filtered
-    //Wait multiple threads finish work and push relationships to map
-    Map<String, String[]> suggestRelationships = getSuggestionRelationships(suggestions);
-
+    SuggestionStrategy suggestionStrategy = new SuggestionStrategy(relationshipIds, identityStorage.getIdentitiesCount(OrganizationIdentityProvider.NAME));
+    
     //statistic suggestion
-    Map<String, Integer> suggestionIdMap = statisticSuggesstion(relationshipIds, suggestRelationships);
+    Map<String, Integer> suggestionIdMap = suggestionStrategy.getSuggestions(identity);
+    
+    if (suggestionIdMap.size() == 0) {
+      suggestionIdMap = getDefaultSugguestion(identity, offset, limit);
+      return buildSuggestions(StorageUtils.sortMapByValue(suggestionIdMap, false), 0, limit);
+    }
+    
     //
     if (offset > suggestionIdMap.size()) return Collections.emptyMap();
     return buildSuggestions(StorageUtils.sortMapByValue(suggestionIdMap, false), offset, limit);
+  }
+  
+  private enum SuggestionStrategyType {
+    STRATEGY_BASE_ON_RELATIONSHIP,
+    STRATEGY_NOT_BASE_ON_RELATIONSHIP
+  }
+  
+  private class SuggestionStrategy {
+    
+    private List<String> relationshipIds;
+    
+    private SuggestionStrategyType type;
+    
+    private int LOW_LIMIT = 100;
+    private int HIGH_LIMIT = 200;
+    
+    public SuggestionStrategy(final List<String> relationshipIds, final int totalUser) {
+      this.relationshipIds = relationshipIds;
+      int relationshipCount = relationshipIds.size();
+      
+      LOG.info(String.format("relationshipCount is %s", relationshipCount));
+      LOG.info(String.format("totalUser is %s", totalUser));
+      
+      if (relationshipCount > HIGH_LIMIT) {
+        //
+        if (totalUser > 1000) {
+          this.type = SuggestionStrategyType.STRATEGY_BASE_ON_RELATIONSHIP;
+        } else {
+          this.type = SuggestionStrategyType.STRATEGY_NOT_BASE_ON_RELATIONSHIP;  
+        }
+      } else if (relationshipCount > LOW_LIMIT) {
+        if (totalUser < 500) {
+          this.type = SuggestionStrategyType.STRATEGY_NOT_BASE_ON_RELATIONSHIP;
+        } else {
+          this.type = SuggestionStrategyType.STRATEGY_BASE_ON_RELATIONSHIP;
+        }
+      } else {//If the relationship lower than 100
+        this.type = SuggestionStrategyType.STRATEGY_BASE_ON_RELATIONSHIP;
+      }
+      
+    }
+    
+    public Map<String, Integer> getSuggestions(Identity identity) {
+      
+      Map<String, Integer> suggestionIdMap = new HashMap<String, Integer>();
+      
+      switch (this.type) {
+      case STRATEGY_BASE_ON_RELATIONSHIP:
+      {
+        LOG.info("====STRATEGY_BASE_ON_RELATIONSHIP[1]====");
+        
+        List<String> excludes = new ArrayList<String>(relationshipIds);
+        excludes.add(identity.getId());
+        
+        //Get relationships of relationships
+        Map<String, String[]> suggestions = getSuggestionRelationships(relationshipIds.toArray(new String[relationshipIds.size()]), excludes);
+        
+        //statistic suggestion
+        suggestionIdMap = calculateNumberOfMutualRelationship(suggestions);
+
+        break;
+      }
+      case STRATEGY_NOT_BASE_ON_RELATIONSHIP:
+      {
+        LOG.info("====STRATEGY_NOT_BASE_ON_RELATIONSHIP[2]====");
+        relationshipIds.add(identity.getId());
+        //store all identities who is not relationship with provided identity
+        String[] suggestions = getSuggestion(relationshipIds);
+        
+        //Find relationships of the identities are filtered
+        //Wait multiple threads finish work and push relationships to map
+        Map<String, String[]> suggestRelationships = getSuggestionRelationships(suggestions, null);     
+        
+        //statistic suggestion
+        suggestionIdMap = statisticSuggesstion(relationshipIds, suggestRelationships);
+        
+        break;
+      }
+      default:
+        break;
+      }
+      //
+      return suggestionIdMap;
+    }
+    
+  }
+  
+  private Map<String, Integer> getDefaultSugguestion(Identity identity, int offset, int limit) {
+    Map<String, Integer> defaultSuggest = new HashMap<String, Integer>();
+
+    //If have no suggestion, get the last users has joined
+    String[] lastUsers = getLastUsers(offset, limit);
+    for (String id : lastUsers) {
+      //
+      if (id.equals(identity.getId())) continue;
+      //
+      defaultSuggest.put(id, 0);
+    }
+    //
+    return defaultSuggest;
   }
   
   private Map<Identity, Integer> buildSuggestions(Map<String, Integer> mapIds,
@@ -1184,6 +1345,7 @@ public class RelationshipStorageImpl extends AbstractStorage implements Relation
       }
       i++;
     }
+    
     return suggestions;
   }
 
