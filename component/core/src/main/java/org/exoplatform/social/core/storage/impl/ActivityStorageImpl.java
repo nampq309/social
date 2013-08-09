@@ -331,6 +331,9 @@ public class ActivityStorageImpl extends AbstractStorage implements ActivityStor
     //update new stream owner
     try {
       Identity streamOwnerIdentity = identityStorage.findIdentity(SpaceIdentityProvider.NAME, activity.getStreamOwner());
+      if (streamOwnerIdentity == null) {
+        streamOwnerIdentity = identityStorage.findIdentity(OrganizationIdentityProvider.NAME, activity.getStreamOwner());
+      }
       IdentityEntity streamOwnerEntity = _findById(IdentityEntity.class, streamOwnerIdentity.getId());
       identityEntity = streamOwnerEntity;
       activityEntity.setIdentity(streamOwnerEntity);
@@ -559,6 +562,8 @@ public class ActivityStorageImpl extends AbstractStorage implements ActivityStor
       commentEntity.setComment(Boolean.TRUE);
       commentEntity.setPostedTime(commentMillis);
       commentEntity.setLastUpdated(commentMillis);
+      
+      commentEntity.setMentioners(processMentions(ArrayUtils.EMPTY_STRING_ARRAY, comment.getTitle(), Collections.<String> emptyList(), true));
       
       HidableEntity hidable = _getMixin(commentEntity, HidableEntity.class, true);
       hidable.setHidden(comment.isHidden());

@@ -228,7 +228,6 @@ public class ActivityStorageTest extends AbstractCoreTest {
   /**
    * Test {@link org.exoplatform.social.core.storage.ActivityStorage#deleteComment(String, String)}
    */
-
   @MaxQueryNumber(350)
   public void testDeleteComment() throws ActivityStorageException {
 
@@ -1532,7 +1531,7 @@ public class ActivityStorageTest extends AbstractCoreTest {
    * 
    * @since 1.2.0-Beta3
    */
-  @MaxQueryNumber(15274)
+  @MaxQueryNumber(1656)
   public void testGetComments() {
     int totalNumber = 40;
     String activityTitle = "activity title";
@@ -2546,6 +2545,15 @@ public class ActivityStorageTest extends AbstractCoreTest {
     
     demoActivities = activityStorage.getActivityFeed(demoIdentity, 0, 10);
     assertEquals(3, demoActivities.size());*/
+=======
+    activity.setStreamOwner(demoIdentity.getRemoteId());
+    activityStorage.updateActivity(activity);
+    
+    activity = activityStorage.getActivity(activity.getId());
+    assertEquals(demoIdentity.getId(), activity.getStreamId());
+    
+    spaceService.deleteSpace(space);
+>>>>>>> feature/social-notifications
   }
 
   /**

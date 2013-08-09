@@ -369,6 +369,12 @@ public class SpaceServiceImpl implements SpaceService {
    */
   @SuppressWarnings("deprecation")
   public Space createSpace(Space space, String creator, String invitedGroupId) {
+    //
+    String[] managers = new String[] {creator};
+    String[] members = new String[] {creator};
+    space.setManagers(managers);
+    space.setMembers(members);
+    
     // Creates new space by creating new group
     String groupId = null;
     try {
@@ -393,7 +399,13 @@ public class SpaceServiceImpl implements SpaceService {
           String userId = user.getUserName();
           if (!userId.equals(creator)) {
             String[] invitedUsers = space.getInvitedUsers();
-            if (!ArrayUtils.contains(invitedUsers, userId)) {
+            if (userId.equals(getUserACL().getSuperUser())) {
+              members = space.getMembers();
+              if (!ArrayUtils.contains(members, userId)) {
+                members = (String[]) ArrayUtils.add(members, userId);
+                space.setMembers(members);
+              }
+            } else if (!ArrayUtils.contains(invitedUsers, userId)) {
               invitedUsers = (String[]) ArrayUtils.add(invitedUsers, userId);
               space.setInvitedUsers(invitedUsers);
             }
@@ -411,10 +423,7 @@ public class SpaceServiceImpl implements SpaceService {
       space.setPrettyName(groupId.split("/")[2]);
     }
     
-    String[] managers = new String[] {creator};
-    String[] members = new String[] {creator};
-    space.setManagers(managers);
-    space.setMembers(members);
+
     space.setGroupId(groupId);
     space.setUrl(space.getPrettyName());
 
@@ -1202,6 +1211,7 @@ public class SpaceServiceImpl implements SpaceService {
       space = addInvited(space, userId);
     }
     this.updateSpace(space);
+    spaceLifeCycle.addInvitedUser(space, userId);
   }
 
   /**
@@ -1229,6 +1239,7 @@ public class SpaceServiceImpl implements SpaceService {
     } else {
       LOG.warn("Unable request to join");
     }
+    spaceLifeCycle.addPendingUser(space, userId);
   }
 
   /**
@@ -1398,7 +1409,10 @@ public class SpaceServiceImpl implements SpaceService {
         space.setManagers(managers);
         this.updateSpace(space);
         SpaceUtils.removeUserFromGroupWithManagerMembership(userId, space.getGroupId());
-        spaceLifeCycle.revokedLead(space, userId);
+        Space updatedSpace = getSpaceById(space.getId()); 
+        if (isMember(updatedSpace, userId)) {
+          spaceLifeCycle.revokedLead(space, userId);
+        }
       }
     }
   }

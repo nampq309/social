@@ -234,7 +234,27 @@ var UIActivity = {
 				}
 			);
 		}
-	}
+	},
+	
+	replyByURL : function(activityId) {
+	  $(document).ready( function() {
+  	    var actionComment = '#CommentLink' + activityId;
+  	    var cmAction = $(actionComment);
+  	    if(cmAction.length > 0) {
+  	      cmAction.trigger('click');
+  	    }
+  	  }
+	  );
+	},
+	
+	loadLikersByURL : function() {
+    $(document).ready( function() {
+      var contentBoxEl = $('#'+UIActivity.contentBoxId);
+      var listLiked = $(contentBoxEl).find('.listLiked');
+      listLiked.find('.btn').trigger('click');
+      }
+    );
+  },
 };
 
 return UIActivity;
